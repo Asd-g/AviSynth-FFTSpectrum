@@ -28,10 +28,12 @@
 
 #endif
 
+#ifdef LOADPLUGIN_DLL
 typedef float fftwf_complex[2];
 typedef fftwf_plan(*fftwf_plan_dft_2d_)(int n0, int n1, fftwf_complex* in, fftwf_complex* out, int sign, unsigned flags);
 typedef void (*fftwf_destroy_plan_)(fftwf_plan);
 typedef void (*fftwf_execute_dft_)(fftwf_plan, fftwf_complex*, fftwf_complex*);
+#endif
 
 static std::mutex fftwf_;
 
@@ -182,6 +184,7 @@ public:
         if (vi.BitsPerComponent() != 8 || vi.IsRGB() || !vi.IsPlanar())
             env->ThrowError("FFTSpectrum: clip must be in YUV 8-bit planar format.");
 
+#ifdef LOADPLUGIN_DLL
         fftw3_lib = LoadLibrary("libfftw3f-3.dll");
         if (!fftw3_lib)
             fftw3_lib = LoadLibrary("fftw3.dll");
@@ -195,6 +198,7 @@ public:
 
         if (!fftw3_lib || !fftwf_plan_dft_2d || !fftwf_destroy_plan)
             env->ThrowError("FFTSpectrum: unable to load libfftw3f-3.dll or fftw3.dll.");
+#endif
 
         const int64_t width = vi.width;
         const int height = vi.height;
