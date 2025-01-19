@@ -1,6 +1,6 @@
 #include <cstring>
 #include <mutex>
-#include <Windows.h>
+#include <windows.h>
 
 #include "fftw3.h"
 #include "avisynth.h"
@@ -8,24 +8,13 @@
 #if defined(_MSC_VER)
 #include <intrin.h>
 
-#define USE_SSE_AUTO
-#define __SSE4_2__
-#define __x86_64__
-#define SSE_MATHFUN_WITH_CODE
-#include "sse_mathfun.h"
-#undef SSE_MATHFUN_WITH_CODE
-#undef __x86_64__
-#undef __SSE4_2__
-#undef USE_SSE_AUTO
+#include "avx2_mathfun.h"
 #undef inline
 
 #elif defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
 #include <x86intrin.h>
 
-#define USE_SSE4
-#define SSE_MATHFUN_WITH_CODE
-#include "sse_mathfun.h"
-
+#include "avx2_mathfun.h"
 #endif
 
 typedef float fftwf_complex[2];
@@ -39,7 +28,7 @@ static void fill_fft_input_array(fftwf_complex* dstp, const uint8_t* srcp, int w
 {
 
     const int mod16_width = width - (width % 16);
-    __m128 sse_zero = _mm_setzero_ps();
+    __m256 sse_zero = _mm256_setzero_ps();
 
     for (int y = 0; y < height; ++y)
     {
@@ -49,14 +38,14 @@ static void fill_fft_input_array(fftwf_complex* dstp, const uint8_t* srcp, int w
 
             for (int j = 0; j < 4; ++j)
             {
-                __m128i epu32_buffer = _mm_cvtepu8_epi32(in_buffer);
-                __m128 cvt_buffer = _mm_cvtepi32_ps(epu32_buffer);
+                __m256i epu32_buffer = _mm256_cvtepu8_epi32(in_buffer);
+                __m256 cvt_buffer = _mm256_cvtepi32_ps(epu32_buffer);
 
-                __m128 out_buffer = _mm_unpacklo_ps(cvt_buffer, sse_zero);
-                __m128 out_buffer1 = _mm_unpackhi_ps(cvt_buffer, sse_zero);
+                __m256 out_buffer = _mm256_unpacklo_ps(cvt_buffer, sse_zero);
+                __m256 out_buffer1 = _mm256_unpackhi_ps(cvt_buffer, sse_zero);
 
-                _mm_store_ps(reinterpret_cast<float*>(dstp), out_buffer);
-                _mm_store_ps(reinterpret_cast<float*>(dstp + 2), out_buffer1);
+                _mm256_store_ps(reinterpret_cast<float*>(dstp), out_buffer);
+                _mm256_store_ps(reinterpret_cast<float*>(dstp + 2), out_buffer1);
 
                 in_buffer = _mm_shuffle_epi32(in_buffer, _MM_SHUFFLE(0, 3, 2, 1));
 
@@ -77,26 +66,30 @@ static void fill_fft_input_array(fftwf_complex* dstp, const uint8_t* srcp, int w
     }
 }
 
+inline __m256 _mm256_set_ps1(float v) {
+    return _mm256_set_ps(v, v, v, v, v, v, v, v);
+}
+
 static void calculate_absolute_values(float* dstp, fftwf_complex* srcp, int length)
 {
     const int mod4_length = length - (length % 4);
-    __m128 sse_one = _mm_set_ps1(1.0f);
+    __m256 sse_one = _mm256_set_ps1(1.0f);
 
     for (int i = 0; i < mod4_length; i += 4)
     {
-        __m128 in_buffer = _mm_load_ps(reinterpret_cast<float*>(srcp));
-        __m128 in_buffer1 = _mm_load_ps(reinterpret_cast<float*>(srcp + 2));
+        __m256 in_buffer = _mm256_load_ps(reinterpret_cast<float*>(srcp));
+        __m256 in_buffer1 = _mm256_load_ps(reinterpret_cast<float*>(srcp + 2));
 
-        __m128 mul_buffer = _mm_mul_ps(in_buffer, in_buffer);
-        __m128 mul_buffer1 = _mm_mul_ps(in_buffer1, in_buffer1);
+        __m256 mul_buffer = _mm256_mul_ps(in_buffer, in_buffer);
+        __m256 mul_buffer1 = _mm256_mul_ps(in_buffer1, in_buffer1);
 
-        __m128 add_buffer = _mm_hadd_ps(mul_buffer, mul_buffer1);
-        add_buffer = _mm_sqrt_ps(add_buffer);
-        add_buffer = _mm_add_ps(add_buffer, sse_one);
+        __m256 add_buffer = _mm256_hadd_ps(mul_buffer, mul_buffer1);
+        add_buffer = _mm256_sqrt_ps(add_buffer);
+        add_buffer = _mm256_add_ps(add_buffer, sse_one);
 
-        __m128 out_buffer = log_ps(add_buffer);
+        __m256 out_buffer = log256_ps(add_buffer);
 
-        _mm_store_ps(dstp, out_buffer);
+        _mm256_store_ps(dstp, out_buffer);
 
         srcp += 4;
         dstp += 4;
