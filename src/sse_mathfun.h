@@ -205,8 +205,8 @@ _PS_CONST(cephes_log_q2, 0.693359375);
 //	_PD_CONST_TYPE(mant_mask, int, 0x7f800000);
 //	_PD_CONST_TYPE(inv_mant_mask, int, ~0x7f800000);
 
-	_PD_CONST_TYPE(sign_mask, long long, 0x8000000000000000LL);
-	_PD_CONST_TYPE(inv_sign_mask, long long, ~0x8000000000000000LL);
+	_PD_CONST_TYPE(sign_mask, long long unsigned, 0x8000000000000000LL);
+	_PD_CONST_TYPE(inv_sign_mask, long long unsigned, ~0x8000000000000000LL);
 
 #endif
 
