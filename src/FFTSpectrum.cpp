@@ -231,12 +231,15 @@ public:
         { has_at_least_v8 = false; }
     }
 
+    PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
     int __stdcall SetCacheHints(int cachehints, int frame_range)
     {
         return cachehints == CACHE_GET_MTMODE ? MT_MULTI_INSTANCE : 0;
     }
+    ~FFTSpectrum();
+};
 
-    ~FFTSpectrum()
+    FFTSpectrum::~FFTSpectrum()
     {
         _aligned_free(fft_in);
         _aligned_free(fft_out);
@@ -244,7 +247,7 @@ public:
         fftwf_destroy_plan(p);
     }
 
-    PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env)
+    PVideoFrame __stdcall FFTSpectrum::GetFrame(int n, IScriptEnvironment* env)
     {
 
         PVideoFrame src = child->GetFrame(n, env);
