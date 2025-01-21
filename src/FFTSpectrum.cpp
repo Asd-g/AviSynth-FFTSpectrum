@@ -28,8 +28,8 @@
 
 #endif
 
-#ifdef LOADPLUGIN_DLL
 typedef float fftwf_complex[2];
+#ifdef LOADPLUGIN_DLL
 typedef fftwf_plan(*fftwf_plan_dft_2d_)(int n0, int n1, fftwf_complex* in, fftwf_complex* out, int sign, unsigned flags);
 typedef void (*fftwf_destroy_plan_)(fftwf_plan);
 typedef void (*fftwf_execute_dft_)(fftwf_plan, fftwf_complex*, fftwf_complex*);
