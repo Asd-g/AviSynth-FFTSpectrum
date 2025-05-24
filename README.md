@@ -12,19 +12,49 @@ This is [a port of the VapourSynth plugin FFTSpectrum](https://github.com/Beatri
 
 - Microsoft VisualC++ Redistributable Package 2022 (can be downloaded from [here](https://github.com/abbodi1406/vcredist/releases))
 
-- libfftw3f-3.dll or fftw3.dll
-
 ### Usage:
 
 ```
-FFTSpectrum (clip, bool "grid")
+FFTSpectrum (clip, bool "grid", int "opt")
 ```
 
 ### Parameters:
 
-- clip\
+- clip<br>
     A clip to process. It must be in YUV 8-bit planar format.
-    
-- grid\
-    Whether a grid with origin at the center of the image and spacing of 100 pixels should be drawn over the resulting spectrum.\
+
+- grid<br>
+    Whether a grid with origin at the center of the image and spacing of 100 pixels should be drawn over the resulting spectrum.<br>
     Default: False.
+
+- opt<br>
+    Sets which cpu optimizations to use.<br>
+    -1: Auto-detect.<br>
+    0: Use C++ code.<br>
+    1: Use SSE2 code.<br>
+    2: Use AVX2 code.<br>
+    3: Use AVX-512 code.<br>
+    Default: 1.
+
+### Building:
+
+```
+Requirements:
+- Git
+- C++20 compiler
+- CMake >= 3.16
+- Ninja
+- FFTW
+```
+
+|    Option   |        Description       | Default value |
+|:-----------:|:------------------------:|:-------------:|
+| STATIC_FFTW | Link against static FFTW |      OFF      |
+
+
+```
+git clone https://github.com/Asd-g/AviSynth-FFTSpectrum
+cd AviSynth-FFTSpectrum
+cmake -B build -G Ninja -DCMAKE_PREFIX_PATH=<path_to_the_fftwf_installation>
+ninja -C build
+```
