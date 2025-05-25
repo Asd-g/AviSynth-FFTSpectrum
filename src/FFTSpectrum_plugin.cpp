@@ -86,7 +86,8 @@ FFTSpectrum::FFTSpectrum(PClip _child, bool grid, int opt, IScriptEnvironment* e
     : GenericVideoFilter(_child),
       m_grid(grid)
 #ifndef STATIC_FFTW
-      ,fftw3_lib_handle(nullptr),
+      ,
+      fftw3_lib_handle(nullptr),
       fftwf_plan_dft_2d(nullptr),
       fftwf_destroy_plan(nullptr),
       fftwf_execute_dft(nullptr)
@@ -154,9 +155,48 @@ FFTSpectrum::FFTSpectrum(PClip _child, bool grid, int opt, IScriptEnvironment* e
 
     const int64_t plane_size = vi.width * vi.height * sizeof(complex_float);
 
-    fft_in = make_unique_aligned_array_fp<complex_float>(plane_size, 32);
-    fft_out = make_unique_aligned_array_fp<complex_float>(plane_size, 32);
-    abs_array = make_unique_aligned_array_fp<float>(vi.width * vi.height * sizeof(float), 32);
+    if (opt < -1 || opt > 3)
+        env->ThrowError("FFTSpectrum: opt must be between -1..3.");
+
+    const bool avx512 = !!(env->GetCPUFlags() & CPUF_AVX512F) && (opt < 0 || opt == 3);
+    const bool avx2 = !!(env->GetCPUFlags() & CPUF_AVX2) && (opt < 0 || opt == 2);
+    const bool sse2 = !!(env->GetCPUFlags() & CPUF_SSE2) && (opt < 0 || opt == 1);
+
+    if (!avx512 && opt == 3)
+        env->ThrowError("FFTSpectrum: opt=3 requires AVX512.");
+
+    if (!avx2 && opt == 2)
+        env->ThrowError("FFTSpectrum: opt=2 requires AVX2.");
+
+    if (!sse2 && opt == 1)
+        env->ThrowError("FFTSpectrum: opt=1 requires SSE2.");
+
+    if (avx512)
+    {
+        fill_fft_input_array = fill_fft_input_array_avx512;
+        calculate_absolute_values = calculate_absolute_values_avx512;
+    }
+    else if (avx2)
+    {
+        fill_fft_input_array = fill_fft_input_array_avx2;
+        calculate_absolute_values = calculate_absolute_values_avx2;
+    }
+    else if (sse2)
+    {
+        fill_fft_input_array = fill_fft_input_array_sse2;
+        calculate_absolute_values = calculate_absolute_values_sse2;
+    }
+    else
+    {
+        fill_fft_input_array = fill_fft_input_array_c;
+        calculate_absolute_values = calculate_absolute_values_c;
+    }
+
+    const int alignment = (avx512) ? 64 : 32;
+
+    fft_in = make_unique_aligned_array_fp<complex_float>(plane_size, alignment);
+    fft_out = make_unique_aligned_array_fp<complex_float>(plane_size, alignment);
+    abs_array = make_unique_aligned_array_fp<float>(vi.width * vi.height * sizeof(float), alignment);
 
     if (!fft_in)
         env->ThrowError("FFTSpectrum: _aligned_malloc failure (fft_in).");
@@ -175,43 +215,6 @@ FFTSpectrum::FFTSpectrum(PClip _child, bool grid, int opt, IScriptEnvironment* e
 
     if (vi.NumComponents() > 1)
         vi.pixel_type = VideoInfo::CS_Y8;
-
-    if (opt < -1 || opt > 3)
-        env->ThrowError("FFTSpectrum: opt must be between -1..3.");
-
-    const bool avx512 = !!(env->GetCPUFlags() & CPUF_AVX512F);
-    const bool avx2 = !!(env->GetCPUFlags() & CPUF_AVX2);
-    const bool sse2 = !!(env->GetCPUFlags() & CPUF_SSE2);
-
-    if (!avx512 && opt == 3)
-        env->ThrowError("FFTSpectrum: opt=3 requires AVX512.");
-
-    if (!avx2 && opt == 2)
-        env->ThrowError("FFTSpectrum: opt=2 requires AVX2.");
-
-    if (!sse2 && opt == 1)
-        env->ThrowError("FFTSpectrum: opt=1 requires SSE2.");
-
-    if ((avx512 && opt < 0) || opt == 3)
-    {
-        fill_fft_input_array = fill_fft_input_array_avx512;
-        calculate_absolute_values = calculate_absolute_values_avx512;
-    }
-    else if ((avx2 && opt < 0) || opt == 2)
-    {
-        fill_fft_input_array = fill_fft_input_array_avx2;
-        calculate_absolute_values = calculate_absolute_values_avx2;
-    }
-    else if ((sse2 && opt < 0) || opt == 1)
-    {
-        fill_fft_input_array = fill_fft_input_array_sse2;
-        calculate_absolute_values = calculate_absolute_values_sse2;
-    }
-    else
-    {
-        fill_fft_input_array = fill_fft_input_array_c;
-        calculate_absolute_values = calculate_absolute_values_c;
-    }
 
     has_at_least_v8 = env->FunctionExists("propShow");
 }
