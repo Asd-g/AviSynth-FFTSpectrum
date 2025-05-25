@@ -6,7 +6,7 @@ if(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
     endif()
 endif()
 
-project(FFTSpectrum VERSION 1.1.0 LANGUAGES CXX)
+project(FFTSpectrum VERSION 1.1.1 LANGUAGES CXX)
 
 option(STATIC_FFTW "Link against static FFTW" OFF)
 message(STATUS "Link against static FFTW: ${STATIC_FFTW}.")
