@@ -1,10 +1,60 @@
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <mutex>
+#include <span>
 
 #include "FFTSpectrum.h"
 
-static std::mutex fftwf_plan_mutex;
+inline std::mutex& GetFFTWMutex()
+{
+    static std::mutex m;
+    return m;
+}
+
+class GlobalLockGuard
+{
+    IScriptEnvironment* env;
+    const char* name;
+    bool acquired;
+    bool is_legacy;
+
+public:
+    GlobalLockGuard(IScriptEnvironment* _env, const char* _name, bool use_avs_lock)
+        : env(_env), name(_name), acquired(false), is_legacy(false)
+    {
+        if (!name)
+            return;
+        if (use_avs_lock)
+        {
+            acquired = env->AcquireGlobalLock(name);
+            if (acquired)
+                return;
+            else
+                env->ThrowError("FFTSpectrum: env is corrupted or the lock name is invalid.");
+        }
+        if (strcmp(name, "fftw") == 0)
+        {
+            GetFFTWMutex().lock();
+            acquired = true;
+            is_legacy = true;
+        }
+    }
+
+    ~GlobalLockGuard()
+    {
+        if (acquired)
+        {
+            if (is_legacy)
+                GetFFTWMutex().unlock();
+            else
+                env->ReleaseGlobalLock(name);
+        }
+    }
+
+    GlobalLockGuard(const GlobalLockGuard&) = delete;
+    GlobalLockGuard& operator=(const GlobalLockGuard&) = delete;
+};
 
 #ifndef STATIC_FFTW
 template<typename T>
@@ -28,15 +78,13 @@ T load_symbol_portable(
 
 static void draw_fft_spectrum(uint8_t* dstp, float* srcp, int width, int height, int stride)
 {
-    float max = 0.f;
+    std::fill_n(dstp, static_cast<size_t>(stride) * height, 0);
 
-    memset(dstp, 0, static_cast<int64_t>(stride) * height);
+    const std::span<const float> src_span(srcp, static_cast<size_t>(height) * width);
+    const float max = *std::ranges::max_element(src_span);
 
-    for (int i = 1; i < height * width; ++i)
-    {
-        if (srcp[i] > max)
-            max = srcp[i];
-    }
+    if (max <= 0.0f)
+        return;
 
     for (int y = 0; y < height; ++y)
     {
@@ -90,7 +138,10 @@ FFTSpectrum::FFTSpectrum(PClip _child, bool grid, int opt, IScriptEnvironment* e
       fftw3_lib_handle(nullptr),
       fftwf_plan_dft_2d(nullptr),
       fftwf_destroy_plan(nullptr),
-      fftwf_execute_dft(nullptr)
+      fftwf_execute_dft(nullptr),
+      has_at_least_v8(env->FunctionExists("propShow")),
+      has_at_least_v12(true),
+      m_env(env)
 #endif
 {
     if (vi.BitsPerComponent() != 8 || vi.IsRGB() || !vi.IsPlanar())
@@ -207,22 +258,32 @@ FFTSpectrum::FFTSpectrum(PClip _child, bool grid, int opt, IScriptEnvironment* e
     if (!abs_array)
         env->ThrowError("FFTSpectrum: _aligned_malloc failure (abs_array).");
 
+    try
     {
-        const std::lock_guard<std::mutex> lock(fftwf_plan_mutex);
+        env->CheckVersion(12);
+    }
+    catch (const AvisynthError&)
+    {
+        has_at_least_v12 = false;
+    }
+
+    {
+        GlobalLockGuard fftw_lock(env, "fftw", has_at_least_v12);
         p = fftwf_plan_dft_2d(vi.height, vi.width, reinterpret_cast<fftwf_complex*>(fft_in.get()),
             reinterpret_cast<fftwf_complex*>(fft_out.get()), FFTW_FORWARD, FFTW_MEASURE | FFTW_DESTROY_INPUT);
     }
 
+    if (!p)
+        env->ThrowError("FFTSpectrum: FFTW failed to create a plan.");
+
     if (vi.NumComponents() > 1)
         vi.pixel_type = VideoInfo::CS_Y8;
-
-    has_at_least_v8 = env->FunctionExists("propShow");
 }
 
 FFTSpectrum::~FFTSpectrum()
 {
     {
-        const std::lock_guard<std::mutex> lock(fftwf_plan_mutex);
+        GlobalLockGuard fftw_lock(m_env, "fftw", has_at_least_v12);
         fftwf_destroy_plan(p);
     }
 

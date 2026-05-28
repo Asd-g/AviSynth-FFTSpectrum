@@ -96,6 +96,9 @@ private:
     aligned_unique_ptr<float> abs_array;
 
     bool has_at_least_v8;
+    bool has_at_least_v12;
+
+    IScriptEnvironment* m_env;
 
 #ifndef STATIC_FFTW
 #ifdef _WIN32
